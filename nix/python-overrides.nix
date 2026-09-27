@@ -309,6 +309,34 @@ lib.optionalAttrs useCuda {
     # skips via dontBuild. Remove this phase override when nixpkgs rewrites
     # wheel metadata before its runtime dependency check.
     preInstallPhases = [ "pythonRelaxDepsHook" ];
+    nativeBuildInputs = [ pkgs.cctools ];
+    # OpenCV's dependencies already load nixpkgs OpenMP. Loading the wheel's
+    # second runtime afterwards crashes CPU matmul inside __kmp_suspend_64.
+    # Use the same runtime regardless of Python module import order.
+    postFixup = ''
+      install_name_tool -change @rpath/libomp.dylib \
+        ${pkgs.llvmPackages.openmp}/lib/libomp.dylib \
+        "$out/${final.python.sitePackages}/torch/lib/libtorch_cpu.dylib"
+      rm "$out/${final.python.sitePackages}/torch/lib/libomp.dylib"
+
+      # Spawned DataLoader workers pass Python's resource-tracker pipe to the
+      # manager. Keeping it open deadlocks interpreter shutdown while tensors
+      # still hold manager sockets. The manager only needs stdin/out/err.
+      manager="$out/${final.python.sitePackages}/torch/bin/torch_shm_manager"
+      mv "$manager" "$manager.real"
+      cat > manager-launcher.c <<EOF
+      #include <stdio.h>
+      #include <unistd.h>
+      int main(int argc, char **argv) {
+          int max_fd = getdtablesize();
+          for (int fd = 3; fd < max_fd; ++fd) close(fd);
+          execv("$manager.real", argv);
+          perror("torch_shm_manager");
+          return 127;
+      }
+      EOF
+      $CC -O2 manager-launcher.c -o "$manager"
+    '';
     propagatedBuildInputs = with final; [
       filelock
       typing-extensions
@@ -985,10 +1013,42 @@ lib.optionalAttrs useCuda {
   });
 }
 
-# Disable accelerate test that fails with torch 2.10.0 inductor in Nix sandbox
-// lib.optionalAttrs ((useCuda || useRocm || useXpu) && (prev ? accelerate)) {
+# Keep accelerate's tests compatible with our platform-specific torch wheels.
+// lib.optionalAttrs (prev ? accelerate) {
   accelerate = prev.accelerate.overridePythonAttrs (old: {
-    disabledTests = (old.disabledTests or [ ]) ++ [ "test_convert_to_fp32" ];
+    disabledTests =
+      (old.disabledTests or [ ])
+      # torch 2.10.0 inductor cannot run this test in the Nix sandbox.
+      ++ lib.optionals (useCuda || useRocm || useXpu) [ "test_convert_to_fp32" ]
+      # FSDP2 requires torch >= 2.6; Apple Silicon intentionally uses 2.5.1
+      # for MPS stability. This test lacks a working version guard.
+      ++ lib.optionals useDarwinArm64 [ "test_param_mapping_error_handling" ];
+  });
+}
+
+# This dataset utility test downloads fixture archives from GitHub. Disable it
+# on every platform so uncached builds also work without sandbox networking.
+// lib.optionalAttrs (prev ? ultralytics) {
+  ultralytics = prev.ultralytics.overridePythonAttrs (old: {
+    disabledTests = (old.disabledTests or [ ]) ++ [ "test_data_utils" ];
+  });
+}
+
+# Isolate Valkey's Redis test server from existing services on Darwin hosts.
+// lib.optionalAttrs (pkgs.stdenv.hostPlatform.isDarwin && prev ? valkey) {
+  valkey = prev.valkey.overridePythonAttrs (old: {
+    # Darwin builds share the host's ports. The Redis test hook otherwise
+    # retries forever when an existing service occupies its default port 6379.
+    preCheck = (old.preCheck or "") + ''
+      redisTestPort="$(${final.python.interpreter} - <<'PY'
+      import socket
+      with socket.socket() as server:
+          server.bind(("127.0.0.1", 0))
+          print(server.getsockname()[1])
+      PY
+      )"
+      pytestFlagsArray+=("--valkey-url=valkey://127.0.0.1:$redisTestPort/0")
+    '';
   });
 }
 
@@ -1137,6 +1197,15 @@ lib.optionalAttrs useCuda {
 # This enables PuLID and other face-related nodes on macOS Apple Silicon.
 // lib.optionalAttrs (prev ? insightface) {
   insightface = prev.insightface.overridePythonAttrs (old: {
+    # Nix supplies the compiler; upstream's Homebrew probe requires an absent
+    # `which` executable and can select a compiler outside the build sandbox.
+    postPatch =
+      (old.postPatch or "")
+      + lib.optionalString pkgs.stdenv.hostPlatform.isDarwin ''
+        substituteInPlace setup.py \
+          --replace-fail 'if platform.system() == "Darwin":' 'if False: # Compiler provided by Nix'
+      '';
+
     # Remove mxnet from dependencies - it's only used for one legacy CLI command
     # and prevents the package from working on macOS (mxnet is Linux-only in nixpkgs)
     dependencies = builtins.filter (dep: dep.pname or "" != "mxnet") (old.dependencies or [ ]);

@@ -283,6 +283,72 @@ in
     pkgs.lib.mapAttrsToList (name: path: { inherit name path; }) runtimeDepsPackages
   );
 }
+//
+  pkgs.lib.optionalAttrs (pkgs.stdenv.hostPlatform.isDarwin && pkgs.stdenv.hostPlatform.isAarch64)
+    {
+      darwin-torch-import-order =
+        let
+          python = (pythonFor "none").withPackages (ps: [
+            ps.torch
+            ps.opencv-python
+          ]);
+        in
+        pkgs.runCommand "darwin-torch-import-order" { } ''
+          # Separate processes expose OpenMP initialization in either import order.
+          for first in cv2 torch; do
+            ${python}/bin/python - "$first" <<'PY'
+          import importlib
+          import sys
+          first = sys.argv[1]
+          importlib.import_module(first)
+          importlib.import_module("torch" if first == "cv2" else "cv2")
+          import torch
+          matrix = torch.arange(256 * 256, dtype=torch.float32).reshape(256, 256)
+          torch.testing.assert_close(matrix @ torch.eye(256), matrix)
+          PY
+          done
+          touch $out
+        '';
+
+      darwin-torch-shared-memory =
+        let
+          python = (pythonFor "none").withPackages (ps: [ ps.torch ]);
+        in
+        pkgs.runCommand "darwin-torch-shared-memory" { } ''
+          cat > shared-memory.py <<'PY'
+          import gc
+          import multiprocessing as mp
+          from multiprocessing import resource_tracker
+          import torch
+
+          def worker(queue):
+              queue.put(torch.ones(4).share_memory_())
+
+          if __name__ == "__main__":
+              ctx = mp.get_context("spawn")
+              queue = ctx.Queue()
+              child = ctx.Process(target=worker, args=(queue,))
+              child.start()
+              tensor = queue.get(timeout=20)
+              child.join(timeout=20)
+              assert child.exitcode == 0
+              queue.close()
+              queue.join_thread()
+              del queue
+              gc.collect()
+              torch.testing.assert_close(tensor, torch.ones(4))
+              # Retain the tensor's manager socket while Python stops its tracker,
+              # reproducing the interpreter-finalization order that hung timm.
+              resource_tracker._resource_tracker._stop()
+          PY
+          ${python}/bin/python - <<'PY'
+          import subprocess
+          import sys
+          subprocess.run([sys.executable, "shared-memory.py"], check=True, timeout=30)
+          PY
+          touch $out
+        '';
+    }
 // runtimeDepsChecks
 // torchRuntimeDepsChecks
 //

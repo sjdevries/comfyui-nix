@@ -235,6 +235,38 @@
         hash = "sha256-pUuMH2HeAbGrlGWJqgFYId0RCTVEcCJJ0gq6VpE8aLs=";
       };
     };
+    # Linux x86_64 ROCm NIGHTLY wheels — the "AMD lags, use the nightly" escape hatch.
+    #
+    # WHY: AMD's stable pytorch.org ROCm wheels lag new-GPU ISA support by
+    # months. gfx1030 (5700XT), gfx1100 (7900XTX) and now gfx1151 (Strix
+    # Halo / Ryzen AI MAX 395) all needed AMD's nightly channel before the
+    # stable wheels carried their ISA. This entry pins AMD's gfx1151 nightly
+    # so `#rocm-nightly` / `services.comfyui.rocmChannel = "rocmNightly"`
+    # can use it on GPUs ahead of the stable `rocm71` wheels.
+    #
+    # NOTE: the gfx1151 nightly is branched at torch 2.9.1 (ROCm 7.13-dev),
+    # which is LOWER than the stable rocm71's torch 2.10.0. That is expected
+    # — the nightly trades torch version for GPU-ISA coverage. ComfyUI runs
+    # fine on 2.9.1.
+    #
+    # To refresh: re-run `nix-prefetch-url` on the new wheel + update the hash.
+    rocmNightly = {
+      torch = {
+        version = "2.9.1+rocm7.13.0a20260513";
+        url = "https://rocm.nightlies.amd.com/v2/gfx1151/torch-2.9.1%2Brocm7.13.0a20260513-cp312-cp312-linux_x86_64.whl";
+        hash = "sha256-KT7OsGNR+RAyngK2ovKF6sKloSGOgTLCRCWULmotegA=";
+      };
+      torchvision = {
+        version = "0.27.0a0+rocm7.13.0a20260411";
+        url = "https://rocm.nightlies.amd.com/v2/gfx1151/torchvision-0.27.0a0%2Brocm7.13.0a20260411-cp312-cp312-linux_x86_64.whl";
+        hash = "sha256-/xkB2j0iPV3unwBpuTnJElEKQxB+H6HG1G1dgVhe25c=";
+      };
+      torchaudio = {
+        version = "2.9.0+rocm7.13.0a20260513";
+        url = "https://rocm.nightlies.amd.com/v2/gfx1151/torchaudio-2.9.0%2Brocm7.13.0a20260513-cp312-cp312-linux_x86_64.whl";
+        hash = "sha256-3dHettgsMH8rGhB6vX7s7WDXbvdc0ZDTYbftfdIRI7s=";
+      };
+    };
     # Linux x86_64 Intel XPU (oneAPI / SYCL)
     # In-tree PyTorch XPU — no IPEX needed. Targets Arc A/B series and
     # Core Ultra (Meteor Lake+) iGPUs. Older Xe-LP iGPUs (UHD 770) are

@@ -25,7 +25,9 @@ let
     if useCuda then
       gpuPackage "cuda"
     else if useRocm then
-      gpuPackage "rocm"
+      # rocmChannel selects the wheel set: "rocm" (stable rocm71) or
+      # "rocm-nightly" (gfx1151 / ahead-of-stable AMD GPUs).
+      gpuPackage (if cfg.rocmChannel == "rocmNightly" then "rocm-nightly" else "rocm")
     else if useXpu then
       gpuPackage "xpu"
     else
@@ -152,6 +154,30 @@ in
 
         Not yet validated on real Intel hardware by the project maintainers —
         feedback welcome.
+      '';
+    };
+
+    rocmChannel = lib.mkOption {
+      type = lib.types.enum [
+        "rocm71"
+        "rocmNightly"
+      ];
+      default = "rocm71";
+      description = ''
+        When `gpuSupport = "rocm"`, selects which ROCm wheel set to use.
+
+        - `rocm71` (default): the stable ROCm 7.1 wheels from pytorch.org.
+        - `rocmNightly`: AMD's gfx1151 nightly wheels. Use this for AMD GPUs
+          whose ISA is not yet carried by the stable wheels — e.g. gfx1151
+          (Strix Halo / Ryzen AI MAX 395), or any newer AMD GPU ahead of the
+          stable release. AMD's stable ROCm wheels lag new-GPU support by
+          months, so the nightly is the escape hatch.
+
+        Note: the gfx1151 nightly is branched at torch 2.9.1 (ROCm 7.13-dev),
+        which is lower than the stable rocm71's torch 2.10.0 — expected; the
+        nightly trades torch version for GPU-ISA coverage.
+
+        Has no effect unless `gpuSupport = "rocm"`.
       '';
     };
 

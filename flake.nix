@@ -94,11 +94,21 @@
           };
 
           pythonOverridesFor =
-            pkgs: gpuSupport: import ./nix/python-overrides.nix { inherit pkgs versions gpuSupport; };
+            pkgs: gpuSupport: rocmChannel:
+            import ./nix/python-overrides.nix {
+              inherit
+                pkgs
+                versions
+                gpuSupport
+                rocmChannel
+                ;
+            };
 
           mkPython =
             pkgs: gpuSupport:
-            pkgs.python312.override { packageOverrides = pythonOverridesFor pkgs gpuSupport; };
+            pkgs.python312.override {
+              packageOverrides = pythonOverridesFor pkgs gpuSupport "rocm71";
+            };
 
           mkPythonEnv =
             pkgs:
@@ -115,6 +125,7 @@
             pkgs:
             {
               gpuSupport ? "none",
+              rocmChannel ? "rocm71",
             }:
             import ./nix/packages.nix {
               inherit
@@ -123,7 +134,7 @@
                 gpuSupport
                 ;
               lib = pkgs.lib;
-              pythonOverrides = pythonOverridesFor pkgs gpuSupport;
+              pythonOverrides = pythonOverridesFor pkgs gpuSupport rocmChannel;
             };
 
           # Linux packages for Docker image cross-builds
@@ -139,6 +150,11 @@
           # CUDA uses pre-built wheels for all supported GPU architectures
           nativePackagesCuda = mkComfyPackages pkgs { gpuSupport = "cuda"; };
           nativePackagesRocm = mkComfyPackages pkgs { gpuSupport = "rocm"; };
+          # ROCm nightly — same backend, gfx1151 nightly wheels (GPUs ahead of stable).
+          nativePackagesRocmNightly = mkComfyPackages pkgs {
+            gpuSupport = "rocm";
+            rocmChannel = "rocmNightly";
+          };
           nativePackagesXpu = mkComfyPackages pkgs { gpuSupport = "xpu"; };
 
           pythonEnv = mkPythonEnv pkgs;
@@ -203,6 +219,8 @@
             cuda = nativePackagesCuda.default;
             dockerImageCuda = nativePackagesCuda.dockerImageCuda;
             rocm = nativePackagesRocm.default;
+            # ROCm nightly — for AMD GPUs ahead of the stable wheels (gfx1151 / Strix Halo).
+            rocm-nightly = nativePackagesRocmNightly.default;
             dockerImageRocm = nativePackagesRocm.dockerImageRocm;
             # Intel XPU (oneAPI / SYCL) — pre-built wheels, Linux x86_64 only.
             # Targets Arc A/B series and Core Ultra iGPUs (Meteor Lake+).
@@ -335,6 +353,13 @@
               self.packages.${final.stdenv.hostPlatform.system}.rocm
             else
               throw "comfy-ui-rocm is only available on x86_64 Linux";
+          # ROCm nightly variant (x86_64 Linux only) - gfx1151 nightly wheels for
+          # AMD GPUs ahead of the stable rocm71 wheels (e.g. Strix Halo).
+          comfy-ui-rocm-nightly =
+            if final.stdenv.hostPlatform.isLinux && final.stdenv.hostPlatform.isx86_64 then
+              self.packages.${final.stdenv.hostPlatform.system}.rocm-nightly
+            else
+              throw "comfy-ui-rocm-nightly is only available on x86_64 Linux";
           # Intel XPU variant (x86_64 Linux only) - pre-built wheels from pytorch.org/whl/xpu
           comfy-ui-xpu =
             if final.stdenv.hostPlatform.isLinux && final.stdenv.hostPlatform.isx86_64 then

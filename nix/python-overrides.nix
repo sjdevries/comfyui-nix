@@ -109,12 +109,35 @@ let
     ]
   );
 
+  # The nightly ROCm wheels (linux_x86_64, not manylinux) link AMD's *renamed*
+  # vendored sysdeps by SONAME: librocm_sysdeps_liblzma.so.5 (xz) and
+  # librocm-openblas.so.0 (openblas). nixpkgs ships these under their canonical
+  # names, so nothing satisfies those NEEDED entries. autoPatchelf indexes libs by
+  # SONAME (not filename), so a symlink is not enough — we copy the canonical lib
+  # and rewrite its SONAME to the renamed one. The symbols are identical.
+  rocmSysdepsShim =
+    pkgs.runCommand "rocm-nightly-sysdeps-shim"
+      {
+        nativeBuildInputs = [ pkgs.patchelf ];
+      }
+      ''
+        mkdir -p "$out/lib"
+        cp --no-preserve=mode ${pkgs.xz.out}/lib/liblzma.so.5 \
+          "$out/lib/librocm_sysdeps_liblzma.so.5"
+        patchelf --set-soname librocm_sysdeps_liblzma.so.5 \
+          "$out/lib/librocm_sysdeps_liblzma.so.5"
+        cp --no-preserve=mode ${pkgs.openblas.out}/lib/libopenblas.so.0 \
+          "$out/lib/librocm-openblas.so.0"
+        patchelf --set-soname librocm-openblas.so.0 \
+          "$out/lib/librocm-openblas.so.0"
+      '';
+
   # ROCm libraries needed by PyTorch wheels (for auto-patchelf)
   # The stable rocm71 wheels bundle the ROCm runtime internally; only compression
   # libs are needed externally. The nightly wheels (linux_x86_64, not manylinux)
-  # do NOT bundle the ROCm runtime, so they additionally link two libs against the
-  # system: librocm_smi64.so.1 (from rocm-smi) and libhiprtc.so.7 (from clr).
-  # Scoped to the nightly so the stable path keeps using its bundled 7.1 libs.
+  # do NOT bundle the ROCm runtime, so they additionally link the whole compute
+  # stack (plus two renamed vendored sysdeps) against the system. Scoped to the
+  # nightly so the stable path keeps using its bundled 7.1 libs.
   rocmLibs = pkgs.lib.optionals useRocm (
     with pkgs;
     [
@@ -125,6 +148,21 @@ let
     ++ lib.optionals (rocmChannel == "rocmNightly") [
       rocmPackages.rocm-smi # librocm_smi64.so.1
       rocmPackages.clr # libhiprtc.so.7
+      # Compute stack the nightly links externally (the stable wheels bundle these).
+      rocmPackages.miopen-hip # libMIOpen.so.1
+      rocmPackages.hipblas # libhipblas.so.3
+      rocmPackages.hipblaslt # libhipblaslt.so.1
+      rocmPackages.hipfft # libhipfft.so.0
+      rocmPackages.hiprand # libhiprand.so.1
+      rocmPackages.hipsparse # libhipsparse.so.4
+      rocmPackages.hipsolver # libhipsolver.so.1
+      rocmPackages.rocsolver # librocsolver.so.0
+      rocmPackages.hipsparselt # libhipsparselt.so.0
+      rocmPackages.rccl # librccl.so.1
+      rocmPackages.rocblas # librocblas.so.5
+      rocmPackages.roctracer # libroctx64.so.4 + libroctracer64.so.4
+      # AMD-renamed vendored sysdeps (see rocmSysdepsShim above).
+      rocmSysdepsShim
     ]
   );
 in

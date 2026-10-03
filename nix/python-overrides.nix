@@ -110,13 +110,21 @@ let
   );
 
   # ROCm libraries needed by PyTorch wheels (for auto-patchelf)
-  # The wheels bundle ROCm libraries internally; only compression libs are needed externally
+  # The stable rocm71 wheels bundle the ROCm runtime internally; only compression
+  # libs are needed externally. The nightly wheels (linux_x86_64, not manylinux)
+  # do NOT bundle the ROCm runtime, so they additionally link two libs against the
+  # system: librocm_smi64.so.1 (from rocm-smi) and libhiprtc.so.7 (from clr).
+  # Scoped to the nightly so the stable path keeps using its bundled 7.1 libs.
   rocmLibs = pkgs.lib.optionals useRocm (
     with pkgs;
     [
       xz # liblzma.so.5
       zstd # libzstd.so.1
       bzip2 # libbz2.so.1
+    ]
+    ++ lib.optionals (rocmChannel == "rocmNightly") [
+      rocmPackages.rocm-smi # librocm_smi64.so.1
+      rocmPackages.clr # libhiprtc.so.7
     ]
   );
 in

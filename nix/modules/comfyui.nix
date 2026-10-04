@@ -25,9 +25,17 @@ let
     if useCuda then
       gpuPackage "cuda"
     else if useRocm then
-      # rocmChannel selects the wheel set: "rocm" (stable rocm71) or
-      # "rocm-nightly" (gfx1151 / ahead-of-stable AMD GPUs).
-      gpuPackage (if cfg.rocmChannel == "rocmNightly" then "rocm-nightly" else "rocm")
+      # rocmChannel selects the wheel set: "rocm" (stable rocm71),
+      # "rocm72" (stable rocm7.2 — the gfx1151 / Strix Halo path), or
+      # "rocm-nightly" (ahead-of-stable AMD GPUs).
+      gpuPackage (
+        if cfg.rocmChannel == "rocmNightly" then
+          "rocm-nightly"
+        else if cfg.rocmChannel == "rocm72" then
+          "rocm72"
+        else
+          "rocm"
+      )
     else if useXpu then
       gpuPackage "xpu"
     else

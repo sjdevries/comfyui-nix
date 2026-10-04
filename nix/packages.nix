@@ -376,6 +376,15 @@ let
               if [[ -d "/run/opengl-driver/lib" ]]; then
                 export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:/run/opengl-driver/lib"
               fi
+
+              # Disable the rocprofiler-register interception. The register's
+              # logging::initialize() calls setenv() during early init, which races
+              # with the HIP runtime's amd::Flag::init() reading the environment
+              # (ROCm/rocm-systems#10196). Under ComfyUI's multithreaded first
+              # kernel launches this intermittently SEGVs in
+              # hipLaunchKernel_validate. ComfyUI does no GPU profiling, so the
+              # register is pure overhead here. A user-set value still wins.
+              export ROCPROFILER_REGISTER_ENABLED="''${ROCPROFILER_REGISTER_ENABLED:-0}"
             ''
           else
             ''

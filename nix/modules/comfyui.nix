@@ -48,6 +48,7 @@ let
     cfg.dataDir
   ]
   ++ lib.optional cfg.enableManager "--enable-manager"
+  ++ lib.optionals (useRocm && cfg.rocmUsePyTorchAttention) [ "--use-pytorch-cross-attention" ]
   ++ cfg.extraArgs;
   # The launcher reads COMFY_SKIP_BUNDLED_NODES; cfg.environment still wins so a
   # user can override it explicitly.
@@ -183,6 +184,23 @@ in
         Note: the gfx1151 nightly is branched at torch 2.9.1 (ROCm 7.13-dev),
         which is lower than the stable rocm71/rocm72 torch — expected; the
         nightly trades torch version for GPU-ISA coverage.
+
+        Has no effect unless `gpuSupport = "rocm"`.
+      '';
+    };
+
+    rocmUsePyTorchAttention = lib.mkOption {
+      type = lib.types.bool;
+      default = true;
+      description = ''
+        When `gpuSupport = "rocm"`, pass `--use-pytorch-cross-attention` so
+        ComfyUI uses PyTorch's native `scaled_dot_product_attention` instead of
+        xformers. xformers' ROCm Composable-Kernel backend is not built for every
+        AMD ISA — notably gfx1151 (Strix Halo) ships no `ckF` kernels, so the
+        default xformers path raises "No operator found for
+        memory_efficient_attention_forward". PyTorch SDPA ships ROCm flash /
+        memory-efficient kernels that cover these GPUs. Set to `false` to use
+        xformers (e.g. on gfx1100 where its kernels are available).
 
         Has no effect unless `gpuSupport = "rocm"`.
       '';

@@ -160,6 +160,7 @@ in
     rocmChannel = lib.mkOption {
       type = lib.types.enum [
         "rocm71"
+        "rocm72"
         "rocmNightly"
       ];
       default = "rocm71";
@@ -167,14 +168,20 @@ in
         When `gpuSupport = "rocm"`, selects which ROCm wheel set to use.
 
         - `rocm71` (default): the stable ROCm 7.1 wheels from pytorch.org.
-        - `rocmNightly`: AMD's gfx1151 nightly wheels. Use this for AMD GPUs
-          whose ISA is not yet carried by the stable wheels — e.g. gfx1151
-          (Strix Halo / Ryzen AI MAX 395), or any newer AMD GPU ahead of the
-          stable release. AMD's stable ROCm wheels lag new-GPU support by
-          months, so the nightly is the escape hatch.
+        - `rocm72`: the stable ROCm 7.2 wheels from pytorch.org (torch 2.14.x).
+          Use this for gfx1151 (Strix Halo / Ryzen AI MAX 395): it is the
+          first STABLE release whose HSA runtime (Ext 1.15) + `gfx11-generic`
+          ISA target actually run on that iGPU. The rocm71 wheels ship the
+          gfx1151 code objects but the 7.1 HSA runtime SEGVs in QueueCreate
+          at the first kernel launch on gfx1151; 7.2 fixes it with
+          self-contained manylinux wheels — no nightly needed.
+        - `rocmNightly`: AMD's gfx1151 nightly wheels. A fallback for AMD GPUs
+          whose ISA is not yet carried by ANY stable wheel. AMD's stable ROCm
+          wheels lag new-GPU support by months, so the nightly is the escape
+          hatch for silicon ahead of even 7.2.
 
         Note: the gfx1151 nightly is branched at torch 2.9.1 (ROCm 7.13-dev),
-        which is lower than the stable rocm71's torch 2.10.0 — expected; the
+        which is lower than the stable rocm71/rocm72 torch — expected; the
         nightly trades torch version for GPU-ISA coverage.
 
         Has no effect unless `gpuSupport = "rocm"`.

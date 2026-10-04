@@ -155,6 +155,11 @@
             gpuSupport = "rocm";
             rocmChannel = "rocmNightly";
           };
+          # ROCm 7.2 — stable wheels; first stable whose HSA runtime runs gfx1151.
+          nativePackagesRocm72 = mkComfyPackages pkgs {
+            gpuSupport = "rocm";
+            rocmChannel = "rocm72";
+          };
           nativePackagesXpu = mkComfyPackages pkgs { gpuSupport = "xpu"; };
 
           pythonEnv = mkPythonEnv pkgs;
@@ -221,6 +226,8 @@
             rocm = nativePackagesRocm.default;
             # ROCm nightly — for AMD GPUs ahead of the stable wheels (gfx1151 / Strix Halo).
             rocm-nightly = nativePackagesRocmNightly.default;
+            # ROCm 7.2 — stable wheels; the recommended gfx1151 (Strix Halo) path.
+            rocm72 = nativePackagesRocm72.default;
             dockerImageRocm = nativePackagesRocm.dockerImageRocm;
             # Intel XPU (oneAPI / SYCL) — pre-built wheels, Linux x86_64 only.
             # Targets Arc A/B series and Core Ultra iGPUs (Meteor Lake+).
